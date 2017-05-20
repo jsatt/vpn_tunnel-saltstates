@@ -1,0 +1,6 @@
+state_verbose: False
+hash_type: sha256
+file_roots:
+    base:
+        - /srv/salt
+        - /srv/pillar/files

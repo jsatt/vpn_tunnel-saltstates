@@ -1,0 +1,75 @@
+#!/bin/bash
+pushd `dirname $0` > /dev/null
+SCRIPT_PATH=`pwd -P`
+popd > /dev/null
+
+SALT_VERSION=`cat $SCRIPT_PATH/SALT_VERSION`
+
+master_ip=127.0.2.1
+master_host=saltmaster
+
+while getopts ":h::i::" opt; do
+    case $opt in
+        i) master_ip="$OPTARG"
+            ;;
+        h) master_host="$OPTARG"
+            ;;
+    esac
+done
+
+status_check(){
+    check_cmd=$1
+    value=$2
+    exec_cmd=$3
+    for i in $(seq 1 25)
+    do
+        if [ `salt-key -l un | grep $master_host` ]; then
+            salt-key -y -a $master_host
+            break
+        fi
+        sleep 1
+    done
+}
+
+if [ ! `grep $master_host /etc/hosts` ]; then
+    echo "$master_ip    $master_host" >> /etc/hosts
+fi
+
+wget -O - http://bootstrap.saltstack.org --no-check-certificate | sudo sh -s -- -M git $SALT_VERSION
+
+cp $SCRIPT_PATH/salt/master /etc/salt/master
+sed "s/{{master_host}}/$master_host/g; s/{{id}}/$master_host/g" < $SCRIPT_PATH/salt/minion > /etc/salt/minion
+
+service salt-master restart
+service salt-minion restart
+
+cmd_status_check(){
+    check_cmd=$1
+    check_value=$2
+    exec_cmd=$3
+    for i in $(seq 1 25)
+    do
+        status_check=`$check_cmd | grep $check_value`
+        if [ "$status_check" ]; then
+            $exec_cmd
+            break
+        fi
+        sleep 1
+    done
+}
+
+cmd_status_check "salt-key -l un" $master_host "salt-key -y -a $master_host"
+
+if [ ! `salt-key -l acc | grep $master_host` ]
+then
+    echo "Unable to accept minion key for $master_host"
+    exit 1
+fi
+
+cmd_status_check "salt-run manage.status" $master_host "salt $master_host state.sls salt"
+
+echo
+echo -e "\e[32mSalt Master is now setup. You can now run the highstate to complete "
+echo -e "configuration of this machine:\e[m"
+echo -e "\e[33msalt '$master_host' state.highstate\e[m"
+echo

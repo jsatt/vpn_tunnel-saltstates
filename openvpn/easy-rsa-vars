@@ -1,0 +1,20 @@
+{% set rsa_vars = salt['pillar.get']('openvpn', {}).get('rsa_vars', {}) %}
+export EASY_RSA="`pwd`"
+export OPENSSL="openssl"
+export PKCS11TOOL="pkcs11-tool"
+export GREP="grep"
+export KEY_CONFIG=`$EASY_RSA/whichopensslcnf $EASY_RSA`
+export KEY_DIR="$EASY_RSA/keys"
+echo NOTE: If you run ./clean-all, I will be doing a rm -rf on $KEY_DIR
+export PKCS11_MODULE_PATH="dummy"
+export PKCS11_PIN="dummy"
+export KEY_SIZE=2048
+export CA_EXPIRE=3650
+export KEY_EXPIRE=3650
+export KEY_COUNTRY="{{rsa_vars.get('country', 'US')}}"
+export KEY_PROVINCE="{{rsa_vars.get('state', 'OK')}}"
+export KEY_CITY="{{rsa_vars.get('city', 'Tulsa')}}"
+export KEY_ORG="{{rsa_vars.get('org', '')}}"
+export KEY_EMAIL="{{rsa_vars.get('email', '')}}"
+export KEY_OU="{{rsa_vars.get('org_unit', '')}}"
+export KEY_NAME="saltmaster"
