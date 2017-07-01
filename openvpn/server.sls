@@ -1,3 +1,4 @@
+{% set openvpn = pillar.get('openvpn', {}) -%}
 include:
     - openvpn
     - openvpn.easy-rsa
@@ -19,3 +20,28 @@ openvpn-server:
             - pkg: easy-rsa
         - watch_in:
             - service: openvpn-server
+
+{% if openvpn.get('allow_tunnel_traffic', False) -%}
+openvpn_nat:
+    iptables.append:
+        - name: openvpn_tunnel
+        - table: nat
+        - chain: POSTROUTING
+        - source: {{openvpn.get('subnet', '10.8.0.0')}}/{{openvpn.get('subnet_cidr', '24')}}
+        - out-interface: {{openvpn.get('tunnel_iface', 'eth0')}}
+        - jump: MASQUERADE
+    sysctl.present:
+        - name: net.ipv4.ip_forward
+        - value: 1
+{% endif -%}
+
+{% if openvpn.get('dynamic_dns', False) -%}
+openvpn_learn_address:
+    pkg.installed:
+        - name: python3-boto3
+    file.managed:
+        - name: /etc/openvpn/learn_address.py
+        - source: salt://openvpn/learn_address.py
+        - template: jinja 
+        - mode: 755
+{% endif %}

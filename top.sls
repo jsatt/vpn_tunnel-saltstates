@@ -5,6 +5,9 @@ base:
     'roles:salt-master':
         - match: grain
         - salt.master
+    'roles:dns-server':
+        - match: grain
+        - bind
     'roles:openvpn-server':
         - match: grain
         - openvpn.server
