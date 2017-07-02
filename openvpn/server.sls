@@ -33,6 +33,28 @@ openvpn_nat:
     sysctl.present:
         - name: net.ipv4.ip_forward
         - value: 1
+
+openvpn_android_dns_tcp:
+    iptables.append:
+        - name: android_dns_tcp
+        - table: nat
+        - chain: PREROUTING
+        - in-interface: tun+
+        - protocol: tcp
+        - dport: 53
+        - jump: DNAT
+        - to-destination: {{openvpn.get('dns_host', '10.8.0.1')}}
+
+openvpn_android_dns_udp:
+    iptables.append:
+        - name: android_dns_udp
+        - table: nat
+        - chain: PREROUTING
+        - in-interface: tun+
+        - protocol: udp
+        - dport: 53
+        - jump: DNAT
+        - to-destination: {{openvpn.get('dns_host', '10.8.0.1')}}
 {% endif -%}
 
 {% if openvpn.get('dynamic_dns', False) -%}
