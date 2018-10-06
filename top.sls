@@ -17,5 +17,8 @@ base:
     'roles:openvpn-keygen':
         - match: grain
         - openvpn.easy-rsa
+    'roles:kubectl':
+        - match: grain
+        - kube.ctl
 
 # vim: set ft=yaml:

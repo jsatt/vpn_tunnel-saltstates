@@ -1,0 +1,134 @@
+{% set kops = pillar.get('kops', {}) -%}
+{% set cluster = kops.get('clusters', {}).get(cluster_name) -%}
+apiVersion: kops/v1alpha2
+kind: Cluster
+metadata:
+    name: {{cluster_name}}
+spec:
+    api:
+        {% if cluster.get('expose_api', '') == 'lb' -%}
+        loadBalancer:
+          type: Public
+        {% else -%}
+        dns: {}
+        {% endif %}
+    additionalPolicies:
+        node: | 
+            [
+                {% for bucket in cluster.s3_buckets %}
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:ListBucket",
+                        "s3:GetBucketLocation",
+                        "s3:ListBucketMultipartUploads"
+                    ],
+                    "Resource": "arn:aws:s3:::{{bucket.name}}"
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:PutObject",
+                        "s3:GetObject",
+                        "s3:DeleteObject",
+                        "s3:ListMultipartUploadParts",
+                        "s3:AbortMultipartUpload"
+                    ],
+                    "Resource": "arn:aws:s3:::{{bucket.name}}/*"
+                }
+                {% if not loop.last %},{% endif %}
+                {% endfor %}
+            ]
+    authorization:
+        alwaysAllow: {}
+    channel: stable
+    cloudProvider: aws
+    configBase: {{kops.storage}}/{{cluster_name}}
+    etcdClusters:
+        - etcdMembers:
+              - encryptedVolume: true
+                instanceGroup: master-{{cluster.zones[0].name}}
+                name: {{cluster.zones[0].name[-1]}}
+          name: main
+        - etcdMembers:
+              - encryptedVolume: true
+                instanceGroup: master-{{cluster.zones[0].name}}
+                name: {{cluster.zones[0].name[-1]}}
+          name: events
+    iam:
+        allowContainerRegistry: true
+        legacy: false
+    {% if cluster.get('api_access') -%}
+    kubernetesApiAccess:
+        {% for cidr in cluster.api_access %}
+        - {{cidr}}
+        {% endfor %}
+    {% endif -%}
+    kubernetesVersion: {{cluster.get('kube_version', '1.8.7')}}
+    networkCIDR: {{cluster.net_cidr}}
+    {% if cluster.get('vpc', '') -%}
+    networkID: {{cluster.vpc}}
+    {% endif -%}
+    networking:
+        kubenet: {}
+    nonMasqueradeCIDR: {{cluster.non_masq_cidr}}
+    {% if cluster.get('ssh_access') -%}
+    sshAccess:
+        {% for cidr in cluster.ssh_access %}
+        - {{cidr}}
+        {% endfor -%}
+    {% endif %}
+    subnets:
+        {% for zone in cluster.zones %}
+        - name: {{zone.name}}
+          type: Public
+          zone: {{zone.name}}
+          {% if zone.get('cidr', '') -%}
+          cidr: {{zone.cidr}}
+          {% endif -%}
+        {% endfor %}
+
+{% for idx in range(cluster.get('master_count', 1)) -%}
+{% set zidx = idx % (cluster.zones|length) -%}
+{% set zone = cluster.zones[zidx] -%}
+{% set nidx = (idx / (cluster.zones|length))|int + 1 -%}
+---
+
+apiVersion: kops/v1alpha2
+kind: InstanceGroup
+metadata:
+    labels:
+        kops.k8s.io/cluster: {{cluster_name}}
+    name: master-{{zone.name}}{% if nidx > 1 %}-{{nidx}}{% endif %}
+spec:
+    image: kope.io/k8s-1.9-debian-jessie-amd64-hvm-ebs-2018-03-11
+    machineType: {{cluster.get('master_size', 'm3.medium')}}
+    maxSize: 1
+    minSize: 1
+    nodeLabels:
+        kops.k8s.io/instancegroup: master-{{zone.name}}{% if nidx > 1 %}-{{nidx}}{% endif %}
+    role: Master
+    subnets:
+        - {{zone.name}}
+
+{% endfor -%}
+---
+
+apiVersion: kops/v1alpha2
+kind: InstanceGroup
+metadata:
+    labels:
+        kops.k8s.io/cluster: {{cluster_name}}
+    name: nodes
+spec:
+    image: kope.io/k8s-1.9-debian-jessie-amd64-hvm-ebs-2018-03-11
+    machineType: {{cluster.get('node_size', 't2.medium')}}
+    maxSize: {{cluster.get('node_count', 3)}}
+    minSize: {{cluster.get('node_count', 3)}}
+    nodeLabels:
+        kops.k8s.io/instancegroup: nodes
+    role: Node
+    subnets:
+        {% for zone in cluster.zones %}
+        - {{zone.name}}
+        {% endfor %}
